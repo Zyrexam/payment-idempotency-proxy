@@ -1,0 +1,95 @@
+version: '3.8'
+
+services:
+  # PostgreSQL - Our audit log database
+  postgres:
+    image: postgres:15-alpine
+    container_name: idempotency-postgres
+    environment:
+      POSTGRES_DB: idempotency
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password
+      POSTGRES_HOST_AUTH_METHOD: md5
+      POSTGRES_INITDB_ARGS: "--auth-host=md5"
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - idempotency-network
+
+  # Redis - For caching and distributed locks
+  redis:
+    image: redis:7-alpine
+    container_name: idempotency-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --requirepass redispass
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "redispass", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - idempotency-network
+
+  # Redis Commander - Web UI to view Redis data (great for debugging)
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: idempotency-redis-commander
+    ports:
+      - "8081:8081"
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+      - REDIS_PASSWORD=redispass
+    depends_on:
+      - redis
+    networks:
+      - idempotency-network
+
+  # Prometheus - Collects metrics
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: idempotency-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+    networks:
+      - idempotency-network
+
+  # Grafana - Visualizes metrics
+  grafana:
+    image: grafana/grafana:latest
+    container_name: idempotency-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - idempotency-network
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  grafana_data:
+    driver: local
+
+networks:
+  idempotency-network:
+    driver: bridge

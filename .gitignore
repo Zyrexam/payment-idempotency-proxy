@@ -1,0 +1,58 @@
+
+## Step 3: Create .gitignore
+
+Create `.gitignore` in your project root:
+
+```gitignore
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Docker
+*.log
+docker-compose.override.yml
+
+# Redis
+dump.rdb
+
+# PostgreSQL
+*.sql
+*.dump
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Application
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage
+.coverage
+.coverage.*
+.coverage_report/
