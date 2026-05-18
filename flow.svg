@@ -1,0 +1,124 @@
+<svg viewBox="0 0 860 500" xmlns="http://www.w3.org/2000/svg" font-family="'Segoe UI', Arial, sans-serif">
+  <rect width="860" height="500" fill="#0d1117" rx="12"/>
+
+  <text x="430" y="35" text-anchor="middle" fill="#e6edf3" font-size="15" font-weight="700" letter-spacing="1">IDEMPOTENCY FLOW</text>
+
+  <!-- Columns -->
+  <!-- Client: 80, Proxy: 220, Redis: 380, PG: 520, Provider: 680 -->
+
+  <!-- Headers -->
+  <rect x="30" y="50" width="100" height="32" rx="6" fill="#1c2128" stroke="#388bfd" stroke-width="1.5"/>
+  <text x="80" y="71" text-anchor="middle" fill="#79c0ff" font-size="10" font-weight="700">CLIENT</text>
+
+  <rect x="170" y="50" width="100" height="32" rx="6" fill="#1c2128" stroke="#3fb950" stroke-width="1.5"/>
+  <text x="220" y="71" text-anchor="middle" fill="#3fb950" font-size="10" font-weight="700">PROXY</text>
+
+  <rect x="330" y="50" width="100" height="32" rx="6" fill="#1c2128" stroke="#f78166" stroke-width="1.5"/>
+  <text x="380" y="71" text-anchor="middle" fill="#f78166" font-size="10" font-weight="700">REDIS</text>
+
+  <rect x="480" y="50" width="100" height="32" rx="6" fill="#1c2128" stroke="#3fb950" stroke-width="1.5"/>
+  <text x="530" y="71" text-anchor="middle" fill="#3fb950" font-size="10" font-weight="700">POSTGRESQL</text>
+
+  <rect x="640" y="50" width="100" height="32" rx="6" fill="#1c2128" stroke="#e3b341" stroke-width="1.5"/>
+  <text x="690" y="71" text-anchor="middle" fill="#e3b341" font-size="10" font-weight="700">PROVIDER</text>
+
+  <!-- Lifelines -->
+  <line x1="80" y1="82" x2="80" y2="490" stroke="#388bfd" stroke-width="1" stroke-dasharray="4,4" opacity="0.4"/>
+  <line x1="220" y1="82" x2="220" y2="490" stroke="#3fb950" stroke-width="1" stroke-dasharray="4,4" opacity="0.4"/>
+  <line x1="380" y1="82" x2="380" y2="490" stroke="#f78166" stroke-width="1" stroke-dasharray="4,4" opacity="0.4"/>
+  <line x1="530" y1="82" x2="530" y2="490" stroke="#3fb950" stroke-width="1" stroke-dasharray="4,4" opacity="0.4"/>
+  <line x1="690" y1="82" x2="690" y2="490" stroke="#e3b341" stroke-width="1" stroke-dasharray="4,4" opacity="0.4"/>
+
+  <!-- Section: First Request -->
+  <rect x="10" y="100" width="840" height="16" rx="3" fill="#21262d" opacity="0.8"/>
+  <text x="430" y="112" text-anchor="middle" fill="#8b949e" font-size="9" font-weight="600">FIRST REQUEST (New Key)</text>
+
+  <!-- Step 1: Client -> Proxy -->
+  <line x1="80" y1="130" x2="215" y2="130" stroke="#388bfd" stroke-width="1.5" marker-end="url(#a1)"/>
+  <text x="148" y="124" text-anchor="middle" fill="#79c0ff" font-size="9">POST /payments</text>
+  <text x="148" y="138" text-anchor="middle" fill="#8b949e" font-size="8">Idempotency-Key: abc</text>
+
+  <!-- Step 2: Proxy -> Redis (cache check) -->
+  <line x1="220" y1="155" x2="375" y2="155" stroke="#f78166" stroke-width="1.5" marker-end="url(#a2)"/>
+  <text x="298" y="149" text-anchor="middle" fill="#f78166" font-size="9">GET cache:abc</text>
+
+  <!-- Step 3: Redis -> Proxy (miss) -->
+  <line x1="375" y1="170" x2="225" y2="170" stroke="#f78166" stroke-width="1" stroke-dasharray="5,3" marker-end="url(#a2r)"/>
+  <text x="298" y="165" text-anchor="middle" fill="#8b949e" font-size="8">MISS</text>
+
+  <!-- Step 4: Proxy -> PG -->
+  <line x1="220" y1="192" x2="525" y2="192" stroke="#3fb950" stroke-width="1.5" marker-end="url(#a3)"/>
+  <text x="373" y="186" text-anchor="middle" fill="#3fb950" font-size="9">SELECT idempotency_records</text>
+
+  <!-- Step 5: PG -> Proxy (no record) -->
+  <line x1="525" y1="207" x2="225" y2="207" stroke="#3fb950" stroke-width="1" stroke-dasharray="5,3" marker-end="url(#a3r)"/>
+  <text x="373" y="202" text-anchor="middle" fill="#8b949e" font-size="8">NO RECORD</text>
+
+  <!-- Step 6: Proxy -> Redis (acquire lock) -->
+  <line x1="220" y1="228" x2="375" y2="228" stroke="#d2a8ff" stroke-width="1.5" marker-end="url(#a4)"/>
+  <text x="298" y="222" text-anchor="middle" fill="#d2a8ff" font-size="9">SET NX lock:abc</text>
+
+  <!-- Step 7: Redis -> Proxy (lock acquired) -->
+  <line x1="375" y1="243" x2="225" y2="243" stroke="#d2a8ff" stroke-width="1" stroke-dasharray="5,3" marker-end="url(#a4r)"/>
+  <text x="298" y="238" text-anchor="middle" fill="#8b949e" font-size="8">ACQUIRED ✓</text>
+
+  <!-- Step 8: Proxy -> PG (create record) -->
+  <line x1="220" y1="264" x2="525" y2="264" stroke="#3fb950" stroke-width="1.5" marker-end="url(#a3)"/>
+  <text x="373" y="258" text-anchor="middle" fill="#3fb950" font-size="9">INSERT status=PROCESSING</text>
+
+  <!-- Step 9: Proxy -> Provider -->
+  <line x1="220" y1="286" x2="685" y2="286" stroke="#e3b341" stroke-width="1.5" marker-end="url(#a5)"/>
+  <text x="453" y="280" text-anchor="middle" fill="#e3b341" font-size="9">Charge $99.99</text>
+
+  <!-- Step 10: Provider -> Proxy -->
+  <line x1="685" y1="301" x2="225" y2="301" stroke="#e3b341" stroke-width="1" stroke-dasharray="5,3" marker-end="url(#a5r)"/>
+  <text x="453" y="296" text-anchor="middle" fill="#8b949e" font-size="8">txn_051a82be ✓</text>
+
+  <!-- Step 11: Proxy -> PG (update) -->
+  <line x1="220" y1="322" x2="525" y2="322" stroke="#3fb950" stroke-width="1.5" marker-end="url(#a3)"/>
+  <text x="373" y="316" text-anchor="middle" fill="#3fb950" font-size="9">UPDATE status=COMPLETED</text>
+
+  <!-- Step 12: Proxy -> Redis (cache) -->
+  <line x1="220" y1="343" x2="375" y2="343" stroke="#f78166" stroke-width="1.5" marker-end="url(#a2)"/>
+  <text x="298" y="337" text-anchor="middle" fill="#f78166" font-size="9">SETEX cache:abc (24h)</text>
+
+  <!-- Step 13: Proxy -> Client -->
+  <line x1="215" y1="364" x2="85" y2="364" stroke="#388bfd" stroke-width="1.5" marker-end="url(#a1r)"/>
+  <text x="148" y="358" text-anchor="middle" fill="#79c0ff" font-size="9">200 OK txn_051a82be</text>
+
+  <!-- Section: Duplicate Request -->
+  <rect x="10" y="382" width="840" height="16" rx="3" fill="#21262d" opacity="0.8"/>
+  <text x="430" y="394" text-anchor="middle" fill="#8b949e" font-size="9" font-weight="600">DUPLICATE REQUEST (Same Key) — Cache Hit Path</text>
+
+  <!-- Step D1: Client -> Proxy -->
+  <line x1="80" y1="412" x2="215" y2="412" stroke="#388bfd" stroke-width="1.5" marker-end="url(#a1)"/>
+  <text x="148" y="406" text-anchor="middle" fill="#79c0ff" font-size="9">POST /payments (retry)</text>
+  <text x="148" y="420" text-anchor="middle" fill="#8b949e" font-size="8">Same Key: abc</text>
+
+  <!-- Step D2: Proxy -> Redis -->
+  <line x1="220" y1="438" x2="375" y2="438" stroke="#f78166" stroke-width="1.5" marker-end="url(#a2)"/>
+  <text x="298" y="432" text-anchor="middle" fill="#f78166" font-size="9">GET cache:abc</text>
+
+  <!-- Step D3: Redis -> Proxy HIT -->
+  <line x1="375" y1="453" x2="225" y2="453" stroke="#f78166" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#a2r)"/>
+  <text x="298" y="448" text-anchor="middle" fill="#3fb950" font-size="9">HIT! → cached response</text>
+
+  <!-- Step D4: Proxy -> Client -->
+  <line x1="215" y1="472" x2="85" y2="472" stroke="#388bfd" stroke-width="1.5" marker-end="url(#a1r)"/>
+  <text x="148" y="466" text-anchor="middle" fill="#79c0ff" font-size="9">200 OK same txn_051a82be ✅</text>
+  <text x="148" y="480" text-anchor="middle" fill="#3fb950" font-size="8">No duplicate charge!</text>
+
+  <!-- Arrow defs -->
+  <defs>
+    <marker id="a1" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#388bfd"/></marker>
+    <marker id="a1r" markerWidth="7" markerHeight="7" refX="1" refY="3" orient="auto"><path d="M7,0 L7,6 L0,3 z" fill="#388bfd"/></marker>
+    <marker id="a2" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#f78166"/></marker>
+    <marker id="a2r" markerWidth="7" markerHeight="7" refX="1" refY="3" orient="auto"><path d="M7,0 L7,6 L0,3 z" fill="#f78166"/></marker>
+    <marker id="a3" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#3fb950"/></marker>
+    <marker id="a3r" markerWidth="7" markerHeight="7" refX="1" refY="3" orient="auto"><path d="M7,0 L7,6 L0,3 z" fill="#3fb950"/></marker>
+    <marker id="a4" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#d2a8ff"/></marker>
+    <marker id="a4r" markerWidth="7" markerHeight="7" refX="1" refY="3" orient="auto"><path d="M7,0 L7,6 L0,3 z" fill="#d2a8ff"/></marker>
+    <marker id="a5" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#e3b341"/></marker>
+    <marker id="a5r" markerWidth="7" markerHeight="7" refX="1" refY="3" orient="auto"><path d="M7,0 L7,6 L0,3 z" fill="#e3b341"/></marker>
+  </defs>
+</svg>

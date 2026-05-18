@@ -56,3 +56,5 @@ Thumbs.db
 .coverage
 .coverage.*
 .coverage_report/
+proof/
+```

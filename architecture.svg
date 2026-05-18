@@ -1,0 +1,127 @@
+<svg viewBox="0 0 900 520" xmlns="http://www.w3.org/2000/svg" font-family="'Segoe UI', Arial, sans-serif">
+  <!-- Background -->
+  <rect width="900" height="520" fill="#0d1117" rx="12"/>
+
+  <!-- Title -->
+  <text x="450" y="38" text-anchor="middle" fill="#e6edf3" font-size="16" font-weight="700" letter-spacing="1">SYSTEM ARCHITECTURE</text>
+
+  <!-- Client -->
+  <rect x="30" y="200" width="110" height="60" rx="8" fill="#1c2128" stroke="#388bfd" stroke-width="1.5"/>
+  <text x="85" y="224" text-anchor="middle" fill="#79c0ff" font-size="11" font-weight="600">CLIENT</text>
+  <text x="85" y="242" text-anchor="middle" fill="#8b949e" font-size="9">cURL / App</text>
+  <text x="85" y="255" text-anchor="middle" fill="#8b949e" font-size="9">Idempotency-Key</text>
+
+  <!-- Arrow Client -> Proxy -->
+  <line x1="140" y1="230" x2="195" y2="230" stroke="#388bfd" stroke-width="1.5" marker-end="url(#arrow-blue)"/>
+  <text x="167" y="222" text-anchor="middle" fill="#8b949e" font-size="8">POST</text>
+
+  <!-- Proxy Box -->
+  <rect x="195" y="140" width="220" height="180" rx="8" fill="#161b22" stroke="#3fb950" stroke-width="1.5"/>
+  <text x="305" y="163" text-anchor="middle" fill="#3fb950" font-size="11" font-weight="700">IDEMPOTENCY PROXY</text>
+  <text x="305" y="180" text-anchor="middle" fill="#8b949e" font-size="8">FastAPI + Uvicorn</text>
+
+  <rect x="210" y="190" width="190" height="22" rx="4" fill="#1c2128"/>
+  <text x="220" y="205" fill="#f0883e" font-size="9">1.</text>
+  <text x="232" y="205" fill="#c9d1d9" font-size="9">Validate UUID key</text>
+
+  <rect x="210" y="216" width="190" height="22" rx="4" fill="#1c2128"/>
+  <text x="220" y="231" fill="#f0883e" font-size="9">2.</text>
+  <text x="232" y="231" fill="#c9d1d9" font-size="9">Check Redis cache</text>
+
+  <rect x="210" y="242" width="190" height="22" rx="4" fill="#1c2128"/>
+  <text x="220" y="257" fill="#f0883e" font-size="9">3.</text>
+  <text x="232" y="257" fill="#c9d1d9" font-size="9">Query PostgreSQL</text>
+
+  <rect x="210" y="268" width="190" height="22" rx="4" fill="#1c2128"/>
+  <text x="220" y="283" fill="#f0883e" font-size="9">4.</text>
+  <text x="232" y="283" fill="#c9d1d9" font-size="9">Acquire distributed lock</text>
+
+  <rect x="210" y="294" width="190" height="22" rx="4" fill="#1c2128"/>
+  <text x="220" y="309" fill="#f0883e" font-size="9">5.</text>
+  <text x="232" y="309" fill="#c9d1d9" font-size="9">Process + cache result</text>
+
+  <!-- Arrow Proxy -> Redis -->
+  <line x1="415" y1="200" x2="475" y2="200" stroke="#f78166" stroke-width="1.5" marker-end="url(#arrow-red)"/>
+  <text x="445" y="192" text-anchor="middle" fill="#8b949e" font-size="8">Cache</text>
+
+  <!-- Arrow Proxy -> Postgres -->
+  <line x1="415" y1="270" x2="475" y2="340" stroke="#3fb950" stroke-width="1.5" marker-end="url(#arrow-green)"/>
+  <text x="430" y="310" fill="#8b949e" font-size="8">Audit</text>
+
+  <!-- Arrow Proxy -> Lock -->
+  <line x1="415" y1="235" x2="475" y2="270" stroke="#d2a8ff" stroke-width="1.5" marker-end="url(#arrow-purple)"/>
+  <text x="423" y="248" fill="#8b949e" font-size="8">Lock</text>
+
+  <!-- Redis Box -->
+  <rect x="475" y="168" width="130" height="65" rx="8" fill="#1c2128" stroke="#f78166" stroke-width="1.5"/>
+  <text x="540" y="190" text-anchor="middle" fill="#f78166" font-size="11" font-weight="700">REDIS 7</text>
+  <text x="540" y="206" text-anchor="middle" fill="#8b949e" font-size="8">Response Cache</text>
+  <text x="540" y="220" text-anchor="middle" fill="#8b949e" font-size="8">Distributed Locks</text>
+  <text x="540" y="228" text-anchor="middle" fill="#8b949e" font-size="8">TTL: 24h</text>
+
+  <!-- PostgreSQL Box -->
+  <rect x="475" y="310" width="130" height="65" rx="8" fill="#1c2128" stroke="#3fb950" stroke-width="1.5"/>
+  <text x="540" y="332" text-anchor="middle" fill="#3fb950" font-size="11" font-weight="700">POSTGRESQL 15</text>
+  <text x="540" y="348" text-anchor="middle" fill="#8b949e" font-size="8">idempotency_records</text>
+  <text x="540" y="362" text-anchor="middle" fill="#8b949e" font-size="8">payment_transactions</text>
+  <text x="540" y="370" text-anchor="middle" fill="#8b949e" font-size="8">Audit trail</text>
+
+  <!-- Lock Box -->
+  <rect x="475" y="245" width="130" height="55" rx="8" fill="#1c2128" stroke="#d2a8ff" stroke-width="1.5"/>
+  <text x="540" y="268" text-anchor="middle" fill="#d2a8ff" font-size="11" font-weight="700">REDIS LOCK</text>
+  <text x="540" y="284" text-anchor="middle" fill="#8b949e" font-size="8">SET NX + Lua script</text>
+  <text x="540" y="294" text-anchor="middle" fill="#8b949e" font-size="8">Atomic release</text>
+
+  <!-- Arrow Lock/Redis -> Provider -->
+  <line x1="605" y1="235" x2="680" y2="235" stroke="#e3b341" stroke-width="1.5" marker-end="url(#arrow-yellow)"/>
+
+  <!-- Provider Box -->
+  <rect x="680" y="195" width="140" height="80" rx="8" fill="#1c2128" stroke="#e3b341" stroke-width="1.5"/>
+  <text x="750" y="218" text-anchor="middle" fill="#e3b341" font-size="11" font-weight="700">PAYMENT</text>
+  <text x="750" y="233" text-anchor="middle" fill="#e3b341" font-size="11" font-weight="700">PROVIDER</text>
+  <text x="750" y="251" text-anchor="middle" fill="#8b949e" font-size="8">Stripe / Adyen</text>
+  <text x="750" y="265" text-anchor="middle" fill="#8b949e" font-size="8">Mock (dev)</text>
+
+  <!-- Monitoring Row -->
+  <rect x="475" y="410" width="90" height="50" rx="8" fill="#1c2128" stroke="#f0883e" stroke-width="1.5"/>
+  <text x="520" y="432" text-anchor="middle" fill="#f0883e" font-size="10" font-weight="600">PROMETHEUS</text>
+  <text x="520" y="448" text-anchor="middle" fill="#8b949e" font-size="8">:9090</text>
+
+  <rect x="580" y="410" width="90" height="50" rx="8" fill="#1c2128" stroke="#f78166" stroke-width="1.5"/>
+  <text x="625" y="432" text-anchor="middle" fill="#f78166" font-size="10" font-weight="600">GRAFANA</text>
+  <text x="625" y="448" text-anchor="middle" fill="#8b949e" font-size="8">:3000</text>
+
+  <line x1="520" y1="375" x2="520" y2="410" stroke="#f0883e" stroke-width="1" stroke-dasharray="4,3"/>
+  <line x1="540" y1="390" x2="580" y2="425" stroke="#f78166" stroke-width="1" stroke-dasharray="4,3"/>
+
+  <!-- Legend -->
+  <rect x="30" y="410" width="420" height="90" rx="8" fill="#161b22" stroke="#30363d" stroke-width="1"/>
+  <text x="45" y="430" fill="#8b949e" font-size="9" font-weight="600">PORT MAP</text>
+  <text x="45" y="448" fill="#79c0ff" font-size="9">● FastAPI :8000</text>
+  <text x="145" y="448" fill="#f78166" font-size="9">● Redis :6379</text>
+  <text x="245" y="448" fill="#3fb950" font-size="9">● PostgreSQL :5433</text>
+  <text x="45" y="464" fill="#f0883e" font-size="9">● Prometheus :9090</text>
+  <text x="145" y="464" fill="#f78166" font-size="9">● Grafana :3000</text>
+  <text x="245" y="464" fill="#d2a8ff" font-size="9">● Redis UI :8081</text>
+  <text x="45" y="485" fill="#8b949e" font-size="9" font-weight="600">NOTE</text>
+  <text x="45" y="498" fill="#8b949e" font-size="9">PostgreSQL mapped to :5433 to avoid conflict with local installs on :5432</text>
+
+  <!-- Arrow markers -->
+  <defs>
+    <marker id="arrow-blue" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#388bfd"/>
+    </marker>
+    <marker id="arrow-red" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#f78166"/>
+    </marker>
+    <marker id="arrow-green" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#3fb950"/>
+    </marker>
+    <marker id="arrow-purple" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#d2a8ff"/>
+    </marker>
+    <marker id="arrow-yellow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#e3b341"/>
+    </marker>
+  </defs>
+</svg>
