@@ -75,6 +75,31 @@ class Metrics:
             'Current number of cached idempotency responses'
         )
         
+        # ============ REDIS METRICS ============
+        
+        self.redis_connected = Gauge(
+            'idempotency_redis_connected',
+            'Redis connection status (1=connected, 0=disconnected)'
+        )
+        
+        self.redis_operation_duration = Histogram(
+            'idempotency_redis_operation_seconds',
+            'Redis operation latency',
+            ['operation'],  # get, set, delete, lock_acquire, lock_release
+            buckets=[0.001, 0.005, 0.01, 0.05, 0.1, 0.5]
+        )
+        
+        self.redis_cache_keys = Gauge(
+            'idempotency_redis_cache_keys',
+            'Number of cached idempotency responses in Redis'
+        )
+        
+        self.redis_memory_usage = Gauge(
+            'idempotency_redis_memory_bytes',
+            'Redis memory usage in bytes'
+        )
+
+        
         # ============ LOCK METRICS ============
         
         self.lock_acquisitions = Counter(

@@ -1,0 +1,35 @@
+============================= test session starts =============================
+platform win32 -- Python 3.11.9, pytest-7.4.3, pluggy-1.6.0 -- C:\Users\mohit\Desktop\Projects\payment-idempotency-proxy\venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\mohit\Desktop\Projects\payment-idempotency-proxy
+plugins: anyio-3.7.1, asyncio-0.21.1, cov-4.1.0
+asyncio: mode=Mode.STRICT
+collecting ... collected 25 items
+
+tests/test_api.py::test_health_check PASSED                              [  4%]
+tests/test_api.py::test_root_endpoint PASSED                             [  8%]
+tests/test_api.py::test_metrics_endpoint PASSED                          [ 12%]
+tests/test_api.py::test_payment_schema_validation PASSED                 [ 16%]
+tests/test_idempotency.py::test_health_check PASSED                      [ 20%]
+tests/test_idempotency.py::test_successful_payment PASSED                [ 24%]
+tests/test_idempotency.py::test_idempotency_duplicate_request PASSED     [ 28%]
+tests/test_idempotency.py::test_different_keys_give_different_transactions PASSED [ 32%]
+tests/test_idempotency.py::test_invalid_idempotency_key_format PASSED    [ 36%]
+tests/test_idempotency.py::test_amount_limit PASSED                      [ 40%]
+tests/test_idempotency.py::test_negative_amount PASSED                   [ 44%]
+tests/test_idempotency.py::test_get_transaction PASSED                   [ 48%]
+tests/test_idempotency.py::test_get_nonexistent_transaction PASSED       [ 52%]
+tests/test_idempotency.py::test_idempotency_status_endpoint PASSED       [ 56%]
+tests/test_idempotency.py::test_concurrent_identical_requests PASSED     [ 60%]
+tests/test_idempotency.py::test_request_hash_tamper_detection PASSED     [ 64%]
+tests/test_idempotency.py::test_cross_key_isolation PASSED               [ 68%]
+tests/test_idempotency.py::test_redis_lock_functionality PASSED          [ 72%]
+tests/test_idempotency.py::test_metrics_endpoint PASSED                  [ 76%]
+tests/test_idempotency.py::test_cors_headers PASSED                      [ 80%]
+tests/test_idempotency.py::test_root_endpoint PASSED                     [ 84%]
+tests/test_idempotency.py::test_payment_with_metadata PASSED             [ 88%]
+tests/test_idempotency.py::test_source_validation PASSED                 [ 92%]
+tests/test_idempotency.py::test_response_caching SKIPPED (Payment fa...) [ 96%]
+tests/test_idempotency.py::test_performance_under_load PASSED            [100%]
+
+======================== 24 passed, 1 skipped in 6.30s ========================

@@ -1,9 +1,11 @@
 global:
-  scrape_interval: 15s      # How often to collect metrics
-  evaluation_interval: 15s  # How often to evaluate rules
+  scrape_interval: 5s      # How often to collect metrics
+  evaluation_interval: 5s  # How often to evaluate rules
 
 scrape_configs:
   - job_name: 'idempotency-proxy'
     static_configs:
       - targets: ['host.docker.internal:8000'] 
     metrics_path: '/metrics'
+
+

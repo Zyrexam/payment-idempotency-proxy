@@ -7,6 +7,7 @@ import hashlib
 import json
 import uuid
 from datetime import datetime, timedelta
+from app.metrics import metrics
 from typing import Tuple, Optional, Dict, Any
 from sqlalchemy.orm import Session
 import redis
@@ -42,21 +43,7 @@ class IdempotencyService:
     def _hash_request(self, body: str) -> str:
         """Create SHA-256 hash of request body for tamper detection"""
         return hashlib.sha256(body.encode()).hexdigest()
-    
-    def _get_cached_response(self, idempotency_key: str) -> Optional[Tuple[int, str]]:
-        """
-        Check Redis cache for previous response
-        This is the FAST path - Redis is in-memory
-        """
-        cached = self.redis.get(f"idempotency:response:{idempotency_key}")
-        if cached:
-            data = json.loads(cached)
-            logger.info(f"💾 Cache HIT for key: {idempotency_key}")
-            return data["status_code"], data["body"]
-        
-        logger.debug(f"💾 Cache MISS for key: {idempotency_key}")
-        return None
-    
+
     def _cache_response(self, idempotency_key: str, status_code: int, body: str):
         """Cache response in Redis for fast duplicate detection"""
         self.redis.setex(
@@ -72,13 +59,33 @@ class IdempotencyService:
             IdempotencyRecord.idempotency_key == idempotency_key
         ).first()
     
+    def _get_cached_response(self, idempotency_key: str) -> Optional[Tuple[int, str]]:
+        """Check Redis cache for previous response - WITH METRICS"""
+        import time
+        start = time.time()
+        
+        cached = self.redis.get(f"idempotency:response:{idempotency_key}")
+        
+        # Track cache lookup duration
+        metrics.observe_cache_lookup(time.time() - start)
+        
+        if cached:
+            data = json.loads(cached)
+            logger.info(f"💾 Cache HIT for key: {idempotency_key}")
+            metrics.track_cache_hit()  # ← ADD THIS
+            return data["status_code"], data["body"]
+        
+        logger.debug(f"💾 Cache MISS for key: {idempotency_key}")
+        metrics.track_cache_miss()  # ← ADD THIS
+        return None
+    
     def _create_processing_record(
         self, 
         idempotency_key: str, 
         request_body: str,
         request_hash: str
     ) -> IdempotencyRecord:
-        """Create a new record with PROCESSING status"""
+        """Create a new record with PROCESSING status - WITH METRICS"""
         record = IdempotencyRecord(
             idempotency_key=idempotency_key,
             request_hash=request_hash,
@@ -89,6 +96,8 @@ class IdempotencyService:
         self.db.add(record)
         self.db.commit()
         self.db.refresh(record)
+        
+        metrics.idempotency_record_creations.inc()  # ← ADD THIS
         logger.info(f"📝 Created processing record for key: {idempotency_key}")
         return record
     
@@ -279,4 +288,4 @@ class IdempotencyService:
                 "message": "Please retry"
             })
         
-        return result
+        return result

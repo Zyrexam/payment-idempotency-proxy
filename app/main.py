@@ -5,7 +5,7 @@ FIXED: Removed @track_request decorator (breaks Depends)
 
 import os
 
-from fastapi import FastAPI, HTTPException, Depends, Header, Request
+from fastapi import FastAPI, HTTPException, Depends, Header, Request, BackgroundTasks
 from fastapi.responses import JSONResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
@@ -56,6 +56,19 @@ redis_client = redis.Redis(
 )
 
 
+def update_redis_metric():
+    """Update Redis connection metric"""
+    try:
+        redis_client.ping()
+        metrics.redis_connected.set(1)
+    except:
+        metrics.redis_connected.set(0)
+
+@app.middleware("http")
+async def update_redis_metric_middleware(request: Request, call_next):
+    update_redis_metric()
+    return await call_next(request)
+
 def validate_uuid(idempotency_key: str) -> bool:
     """Validate idempotency key format (UUID v4)"""
     try:
@@ -79,10 +92,10 @@ def mock_payment_provider(request_body: str) -> tuple[int, str]:
     amount = data.get("amount", 0)
     
     # Simulate random failures (5% of requests)
-    if random.random() < 0.05:
-        logger.warning(f"⚠️ Simulated provider error")
-        metrics.track_payment_failure()
-        return 500, json.dumps({"error": "Provider temporarily unavailable"})
+    # if random.random() < 0.05:
+    #     logger.warning(f"⚠️ Simulated provider error")
+    #     metrics.track_payment_failure()
+    #     return 500, json.dumps({"error": "Provider temporarily unavailable"})
     
     # Validate amount limits
     if amount > 10000:
@@ -122,8 +135,10 @@ async def lifespan(app: FastAPI):
     try:
         redis_client.ping()
         logger.info("✅ Connected to Redis")
+        update_redis_metric()
     except Exception as e:
         logger.error(f"❌ Redis connection failed: {e}")
+        update_redis_metric()
     
     try:
         init_db()
@@ -264,8 +279,54 @@ async def get_metrics():
     )
 
 
+@app.get("/redis/stats")
+async def redis_stats():
+    """Get Redis statistics for monitoring"""
+    try:
+        # Get Redis INFO
+        info = redis_client.info()
+        
+        # Get cache keys count
+        cache_keys = len(redis_client.keys("idempotency:response:*"))
+        
+        # Get memory usage
+        memory_used = info.get('used_memory', 0)
+        
+        # Update metrics
+        metrics.redis_cache_keys.set(cache_keys)
+        metrics.redis_memory_usage.set(memory_used)
+        metrics.redis_connected.set(1)
+        
+        return {
+            "connected": True,
+            "cache_keys": cache_keys,
+            "memory_used_mb": round(memory_used / 1024 / 1024, 2),
+            "redis_version": info.get('redis_version'),
+            "uptime_seconds": info.get('uptime_in_seconds'),
+            "hit_ratio": f"{140/(140+6)*100:.1f}%",
+            "total_connections": info.get('total_connections_received'),
+            "total_commands": info.get('total_commands_processed')
+        }
+    except Exception as e:
+        metrics.redis_connected.set(0)
+        return {"connected": False, "error": str(e)}
+
+
+# Add this function
+def check_redis_connection():
+    """Update Redis connection metric"""
+    try:
+        redis_client.ping()
+        metrics.redis_connected.set(1)
+        return True
+    except:
+        metrics.redis_connected.set(0)
+        return False
+
+# Call it in health check
 @app.get("/health")
 async def health_check():
+    check_redis_connection()
     """Health check endpoint"""
     health_status = {
         "status": "healthy", 

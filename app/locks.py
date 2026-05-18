@@ -150,13 +150,16 @@ class LockService:
                 timeout_seconds=30
             )
         """
+        from app.metrics import metrics
         lock_value = self.lock.acquire(lock_key, timeout_seconds)
         
         if not lock_value:
+            metrics.track_lock_failed()  # ← add
             if fail_fast:
                 raise Exception(f"Could not acquire lock for key: {lock_key}")
             return None
         
+        metrics.track_lock_acquired()  # ← add
         try:
             return func()
         finally:

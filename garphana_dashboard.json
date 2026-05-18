@@ -1,0 +1,558 @@
+{
+  "title": "Payment Idempotency Proxy - Live Metrics",
+  "uid": "idempotency-proxy",
+  "timezone": "browser",
+  "refresh": "10s",
+  "time": { "from": "now-30m", "to": "now" },
+  "panels": [
+
+    {
+      "id": 1,
+      "title": "Payment Rate (per second)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "rate(idempotency_successful_payments_total[1m])",
+          "legendFormat": "Success/sec"
+        },
+        {
+          "expr": "rate(idempotency_failed_payments_total[1m])",
+          "legendFormat": "Failed/sec"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "reqps" },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Success/sec" }, "properties": [{ "id": "color", "value": { "fixedColor": "#3fb950", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "Failed/sec"  }, "properties": [{ "id": "color", "value": { "fixedColor": "#f78166", "mode": "fixed" } }] }
+        ]
+      }
+    },
+
+    {
+      "id": 2,
+      "title": "Success vs Failure (total count)",
+      "type": "piechart",
+      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 8 },
+      "targets": [
+        {
+          "expr": "idempotency_successful_payments_total",
+          "legendFormat": "Success"
+        },
+        {
+          "expr": "idempotency_failed_payments_total",
+          "legendFormat": "Failed"
+        }
+      ],
+      "options": {
+        "pieType": "donut",
+        "displayLabels": ["name", "percent"]
+      },
+      "fieldConfig": {
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Success" }, "properties": [{ "id": "color", "value": { "fixedColor": "#3fb950", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "Failed"  }, "properties": [{ "id": "color", "value": { "fixedColor": "#f78166", "mode": "fixed" } }] }
+        ]
+      }
+    },
+
+    {
+      "id": 3,
+      "title": "Cache Hits vs Misses (total count)",
+      "type": "piechart",
+      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 8 },
+      "targets": [
+        {
+          "expr": "idempotency_cache_hits_total",
+          "legendFormat": "Cache Hits"
+        },
+        {
+          "expr": "idempotency_cache_misses_total",
+          "legendFormat": "Cache Misses"
+        }
+      ],
+      "options": {
+        "pieType": "donut",
+        "displayLabels": ["name", "percent"]
+      },
+      "fieldConfig": {
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Cache Hits"   }, "properties": [{ "id": "color", "value": { "fixedColor": "#3fb950", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "Cache Misses" }, "properties": [{ "id": "color", "value": { "fixedColor": "#e3b341", "mode": "fixed" } }] }
+        ]
+      }
+    },
+
+    {
+      "id": 4,
+      "title": "Request Latency P50 / P95 / P99",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, rate(idempotency_request_duration_seconds_bucket[5m]))",
+          "legendFormat": "P50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, rate(idempotency_request_duration_seconds_bucket[5m]))",
+          "legendFormat": "P95"
+        },
+        {
+          "expr": "histogram_quantile(0.99, rate(idempotency_request_duration_seconds_bucket[5m]))",
+          "legendFormat": "P99"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "s" },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "P50" }, "properties": [{ "id": "color", "value": { "fixedColor": "#3fb950", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "P95" }, "properties": [{ "id": "color", "value": { "fixedColor": "#e3b341", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "P99" }, "properties": [{ "id": "color", "value": { "fixedColor": "#f78166", "mode": "fixed" } }] }
+        ]
+      }
+    },
+
+    {
+      "id": 5,
+      "title": "Total Amount Processed ($)",
+      "type": "stat",
+      "gridPos": { "x": 12, "y": 8, "w": 6, "h": 4 },
+      "targets": [
+        {
+          "expr": "idempotency_total_amount_processed_cents_total / 100",
+          "legendFormat": "Total USD"
+        }
+      ],
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null }
+            ]
+          }
+        }
+      }
+    },
+
+    {
+      "id": 6,
+      "title": "Average Payment Amount ($)",
+      "type": "stat",
+      "gridPos": { "x": 18, "y": 8, "w": 6, "h": 4 },
+      "targets": [
+        {
+          "expr": "idempotency_average_payment_amount_cents / 100",
+          "legendFormat": "Avg ($)"
+        }
+      ],
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "green", "value": null }]
+          }
+        }
+      }
+    },
+
+    {
+      "id": 7,
+      "title": "Successful Payments (total count)",
+      "type": "stat",
+      "gridPos": { "x": 12, "y": 12, "w": 6, "h": 4 },
+      "targets": [
+        {
+          "expr": "idempotency_successful_payments_total",
+          "legendFormat": "Payments"
+        }
+      ],
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "green", "value": null }]
+          }
+        }
+      }
+    },
+
+    {
+      "id": 8,
+      "title": "Failed Payments (total count)",
+      "type": "stat",
+      "gridPos": { "x": 18, "y": 12, "w": 6, "h": 4 },
+      "targets": [
+        {
+          "expr": "idempotency_failed_payments_total",
+          "legendFormat": "Failures"
+        }
+      ],
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green",  "value": null },
+              { "color": "yellow", "value": 5    },
+              { "color": "red",    "value": 20   }
+            ]
+          }
+        }
+      }
+    },
+
+    {
+      "id": 9,
+      "title": "Database Connection Pool",
+      "type": "gauge",
+      "gridPos": { "x": 0, "y": 16, "w": 8, "h": 8 },
+      "targets": [
+        {
+          "expr": "idempotency_db_pool_size",
+          "legendFormat": "Pool Size"
+        },
+        {
+          "expr": "idempotency_db_pool_checked_out",
+          "legendFormat": "Checked Out"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "minVizWidth": 75,
+        "minVizHeight": 75
+      },
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 15,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green",  "value": null },
+              { "color": "yellow", "value": 8    },
+              { "color": "red",    "value": 13   }
+            ]
+          }
+        }
+      }
+    },
+
+    {
+      "id": 10,
+      "title": "Lock Acquisitions vs Failures",
+      "type": "timeseries",
+      "gridPos": { "x": 8, "y": 16, "w": 16, "h": 8 },
+      "targets": [
+        {
+          "expr": "rate(idempotency_lock_acquisitions_total[1m])",
+          "legendFormat": "Acquisitions/sec"
+        },
+        {
+          "expr": "rate(idempotency_lock_failures_total[1m])",
+          "legendFormat": "Failures/sec"
+        }
+      ],
+      "fieldConfig": {
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Acquisitions/sec" }, "properties": [{ "id": "color", "value": { "fixedColor": "#3fb950", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "Failures/sec"     }, "properties": [{ "id": "color", "value": { "fixedColor": "#f78166", "mode": "fixed" } }] }
+        ]
+      }
+    },
+
+    {
+      "id": 11,
+      "title": "Cache Hit Rate (per second)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 24, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "rate(idempotency_cache_hits_total[1m])",
+          "legendFormat": "Hits/sec"
+        },
+        {
+          "expr": "rate(idempotency_cache_misses_total[1m])",
+          "legendFormat": "Misses/sec"
+        }
+      ],
+      "fieldConfig": {
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Hits/sec"   }, "properties": [{ "id": "color", "value": { "fixedColor": "#3fb950", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "Misses/sec" }, "properties": [{ "id": "color", "value": { "fixedColor": "#e3b341", "mode": "fixed" } }] }
+        ]
+      }
+    },
+
+    {
+      "id": 12,
+      "title": "Cache Hit Ratio (%)",
+      "type": "stat",
+      "gridPos": { "x": 12, "y": 24, "w": 6, "h": 4 },
+      "targets": [
+        {
+          "expr": "idempotency_cache_hits_total / (idempotency_cache_hits_total + idempotency_cache_misses_total) * 100",
+          "legendFormat": "Hit Ratio"
+        }
+      ],
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red",    "value": null },
+              { "color": "yellow", "value": 50   },
+              { "color": "green",  "value": 80   }
+            ]
+          }
+        }
+      }
+    },
+
+    {
+      "id": 13,
+      "title": "Redis Connection Status",
+      "type": "stat",
+      "gridPos": { "x": 18, "y": 24, "w": 6, "h": 4 },
+      "targets": [
+        {
+          "expr": "idempotency_redis_connected",
+          "legendFormat": "Status"
+        }
+      ],
+      "options": {
+        "colorMode": "value",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red",   "value": null },
+              { "color": "green", "value": 1    }
+            ]
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": { "text": "DOWN", "color": "red"   },
+                "1": { "text": "UP",   "color": "green" }
+              }
+            }
+          ]
+        }
+      }
+    },
+
+    {
+      "id": 14,
+      "title": "Redis Cache Keys (active)",
+      "type": "stat",
+      "gridPos": { "x": 12, "y": 28, "w": 6, "h": 4 },
+      "targets": [
+        {
+          "expr": "idempotency_redis_cache_keys",
+          "legendFormat": "Keys"
+        }
+      ],
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "blue", "value": null }]
+          }
+        }
+      }
+    },
+
+    {
+      "id": 15,
+      "title": "Redis Memory Usage (MB)",
+      "type": "gauge",
+      "gridPos": { "x": 18, "y": 28, "w": 6, "h": 4 },
+      "targets": [
+        {
+          "expr": "idempotency_redis_memory_bytes / 1024 / 1024",
+          "legendFormat": "Memory MB"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "decmbytes",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green",  "value": null },
+              { "color": "yellow", "value": 50   },
+              { "color": "red",    "value": 80   }
+            ]
+          }
+        }
+      }
+    },
+
+    {
+      "id": 16,
+      "title": "Provider / Cache / DB Latency (P95)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 32, "w": 12, "h": 6 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, rate(idempotency_payment_processing_seconds_bucket[5m]))",
+          "legendFormat": "Provider P95"
+        },
+        {
+          "expr": "histogram_quantile(0.95, rate(idempotency_cache_lookup_seconds_bucket[5m]))",
+          "legendFormat": "Cache Lookup P95"
+        },
+        {
+          "expr": "histogram_quantile(0.95, rate(idempotency_db_query_seconds_bucket[5m]))",
+          "legendFormat": "DB Query P95"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "s" }
+      }
+    },
+
+    {
+      "id": 17,
+      "title": "Conflicts & Invalid Keys",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 32, "w": 12, "h": 6 },
+      "targets": [
+        {
+          "expr": "rate(idempotency_conflicts_total[1m])",
+          "legendFormat": "Conflicts/sec"
+        },
+        {
+          "expr": "rate(idempotency_invalid_keys_total[1m])",
+          "legendFormat": "Invalid Keys/sec"
+        }
+      ],
+      "fieldConfig": {
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Conflicts/sec"    }, "properties": [{ "id": "color", "value": { "fixedColor": "#e3b341", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "Invalid Keys/sec" }, "properties": [{ "id": "color", "value": { "fixedColor": "#f78166", "mode": "fixed" } }] }
+        ]
+      }
+    },
+
+    {
+      "id": 18,
+      "title": "Idempotency Records Created (total)",
+      "type": "stat",
+      "gridPos": { "x": 0, "y": 38, "w": 6, "h": 4 },
+      "targets": [
+        {
+          "expr": "idempotency_record_creations_total",
+          "legendFormat": "Records"
+        }
+      ],
+      "options": {
+        "colorMode": "value",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "blue", "value": null }]
+          }
+        }
+      }
+    },
+
+    {
+      "id": 19,
+      "title": "Success Rate (%)",
+      "type": "stat",
+      "gridPos": { "x": 6, "y": 38, "w": 6, "h": 4 },
+      "targets": [
+        {
+          "expr": "idempotency_successful_payments_total / (idempotency_successful_payments_total + idempotency_failed_payments_total) * 100",
+          "legendFormat": "Success Rate"
+        }
+      ],
+      "options": {
+        "colorMode": "value",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red",    "value": null },
+              { "color": "yellow", "value": 90   },
+              { "color": "green",  "value": 98   }
+            ]
+          }
+        }
+      }
+    },
+
+    {
+      "id": 20,
+      "title": "Lock Hold Duration (P95)",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 38, "w": 12, "h": 4 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, rate(idempotency_lock_hold_seconds_bucket[5m]))",
+          "legendFormat": "P95 hold time"
+        },
+        {
+          "expr": "histogram_quantile(0.50, rate(idempotency_lock_hold_seconds_bucket[5m]))",
+          "legendFormat": "P50 hold time"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "s" }
+      }
+    }
+
+  ]
+}
