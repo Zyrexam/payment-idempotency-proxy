@@ -6,149 +6,127 @@
 
 [![Python](https://img.shields.io/badge/Python-3.11-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
-[![Redis](https://img.shields.io/badge/Redis-7.0-DC382D?style=for-the-badge&logo=redis&logoColor=white)](https://redis.io)
+[![Redis](https://img.shields.io/badge/Redis-7-DC382D?style=for-the-badge&logo=redis&logoColor=white)](https://redis.io)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)](https://postgresql.org)
-
 [![Prometheus](https://img.shields.io/badge/Prometheus-E6522C?style=for-the-badge&logo=prometheus&logoColor=white)](https://prometheus.io)
 [![Grafana](https://img.shields.io/badge/Grafana-F46800?style=for-the-badge&logo=grafana&logoColor=white)](https://grafana.com)
 [![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://docker.com)
-[![Kubernetes](https://img.shields.io/badge/Kubernetes-326CE5?style=for-the-badge&logo=kubernetes&logoColor=white)](https://kubernetes.io)
 
 **Production-grade distributed idempotency layer for payment systems.**
 
-[![Tests](https://img.shields.io/badge/tests-25%20passed-brightgreen)]()
-[![Coverage](https://img.shields.io/badge/coverage-79%25-brightgreen)]()
-[![Cache Hit Rate](https://img.shields.io/badge/redis%20cache-95.9%25%20hit%20rate-brightgreen)]()
-[![Lock Success](https://img.shields.io/badge/distributed%20lock-100%25%20success-brightgreen)]()
+Prevents duplicate payment processing via Redis-backed distributed locks, response caching, and a PostgreSQL audit trail.
 
 </div>
 
 
 ---
 
-## 🎯 The Problem
+##  The Problem
 
-### Every Payment System's Nightmare
+Network timeouts, double-clicks, and retry logic all share the same root cause: payment providers are **not idempotent by default**. The same request sent twice can result in two charges.
 
-```
-Scenario A: Network Timeout                    Scenario B: Double Click
-┌────────┐     ┌──────────┐                   ┌────────┐     ┌──────────┐
-│ User   │────▶│ Payment  │  ❌ Timeout       │ User   │────▶│ Payment  │
-│ Clicks │     │ Gateway  │                   │ Clicks │     │ Gateway  │
-└────────┘     └──────────┘                   └────────┘     └──────────┘
-     │              │                               │              │
-     │              │  ⏱️ User retries              │              │  ✅ Processed
-     ▼              ▼                               ▼              ▼
-┌────────┐     ┌──────────┐                   ┌────────┐     ┌──────────┐
-│ User   │────▶│ Payment  │  💸 Double Charge  │ User   │────▶│ Payment  │  💸 Double Charge
-│ Retries│     │ Gateway  │                   │ Clicks │     │ Gateway  │
-└────────┘     └──────────┘                   │ Again  │     └──────────┘
-                                               └────────┘
-```
-
-**The Cost:** 
-- $47B lost annually to payment failures (Worldpay, 2023)
-- 67% of users abandon after a failed payment (Baymard)
-- Double charges = support tickets + refund fees + angry customers
-
-**Root Cause:** Payment providers are **not idempotent** by default. Same request ≠ same result.
+This proxy sits between your application and a payment provider, guaranteeing that each unique `Idempotency-Key` results in exactly one payment — no matter how many times you retry or how many concurrent requests arrive.
 
 ---
 
-
-## The Solution
-
-### Exactly-Once Processing Guarantee
+##  How It Works
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                         IDEMPOTENCY PROXY                                    │
-│                                                                              │
-│  ┌──────────┐     ┌─────────┐     ┌──────────┐     ┌─────────┐             │
-│  │ Request  │────▶│ Validate│────▶│ Check    │────▶│ Acquire │             │
-│  │ + Key    │     │ UUID    │     │ Cache    │     │ Lock    │             │
-│  └──────────┘     └─────────┘     └────┬─────┘     └────┬────┘             │
-│                                        │                │                   │
-│                                   ┌────▼─────┐     ┌────▼─────┐             │
-│                                   │ Redis    │     │ Redis    │             │
-│                                   │ Cache    │     │ Lock     │             │
-│                                   │ 95.9% HR │     │ 100%     │             │
-│                                   └──────────┘     └──────────┘             │
-│                                                                              │
-│  When duplicate arrives:                                                     │
-│  ┌──────────┐     ┌─────────┐     ┌──────────┐                              │
-│  │ Request  │────▶│ Check   │────▶│ Return   │   No double charge!        │
-│  │ Same Key │     │ Cache   │     │ Cached   │                              │
-│  └──────────┘     └─────────┘     └──────────┘                              │
-│                                                                              │
-└─────────────────────────────────────────────────────────────────────────────┘
+Request + Idempotency-Key
+        │
+        ▼
+┌──────────────────┐     ┌──────────────┐
+│  Validate UUID   │────▶│  Check Redis │
+│  format (v4)     │     │  cache       │
+└──────────────────┘     └──────┬───────┘
+                                │
+                     ╭──────────┴──────────╮
+                     │ HIT                 │ MISS
+                     ▼                     ▼
+              ┌──────────────┐     ┌──────────────┐
+              │ Return cached│     │  Check       │
+              │ response     │     │  PostgreSQL  │
+              └──────────────┘     └──────┬───────┘
+                                          │
+                               ╭──────────┴──────────╮
+                               │ Existing            │ New
+                               ▼                     ▼
+                        ┌──────────────┐     ┌──────────────┐
+                        │ Return stored│     │ Acquire      │
+                        │ response     │     │ Redis lock   │
+                        └──────────────┘     └──────┬───────┘
+                                                    ▼
+                                             ┌──────────────┐
+                                             │ Process with │
+                                             │ payment      │
+                                             │ provider     │
+                                             └──────┬───────┘
+                                                    ▼
+                                             ┌──────────────┐
+                                             │ Cache result │
+                                             │ + release    │
+                                             │ lock         │
+                                             └──────────────┘
 ```
 
-**What You Get:**
--  **Exactly-once processing** — mathematically guaranteed
--  **Sub-millisecond duplicate detection** — Redis cache
--  **Race condition proof** — Distributed locks
--  **Complete audit trail** — PostgreSQL
--  **Real-time monitoring** — Prometheus + Grafana
+**Key guarantees:**
+- **Exactly-once processing** — distributed locks prevent race conditions
+- **Sub-millisecond duplicate detection** — Redis response cache
+- **Tamper detection** — request body hashing catches key reuse with different payloads
+- **Complete audit trail** — PostgreSQL records every request lifecycle
+- **Real-time monitoring** — Prometheus metrics + Grafana dashboard
 
 ---
 
-##  Live Demo Metrics
-
-### Current Production Data (from actual test runs)
+##  Project Structure
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                         REAL-TIME METRICS                                    │
-│                         (as of May 2026)                                     │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│  📈 REQUEST VOLUME                    💰 FINANCIAL METRICS                   │
-│  ├──  Successful: 148 (79.1%)       ├── Total Processed: $12,500          │
-│  ├──  Failed: 12 (6.4%)             ├── Average Payment: $84.46           │
-│  ├──   Invalid: 50 (26.7%)          ├── Highest Value: $500               │
-│  └──  Total: 210                    └── Lowest Value: $10                 │
-│                                                                              │
-│  ⚡ PERFORMANCE                        🗄️ INFRASTRUCTURE                      │
-│  ├── Avg Latency: 94.2ms              ├── DB Pool: 10 connections           │
-│  ├── P95 Latency: 150ms               ├── Cache Size: 280 keys              │
-│  ├── Throughput: 13.9 req/sec         ├── Lock Success: 100%                │
-│  └── Cache Hit Rate: 95.9%            └── Uptime: 100%                      │
-│                                                                              │
-│  🔒 IDEMPOTENCY GUARANTEES             📊 TESTING                            │
-│  ├── Double Charges: 0                ├── Tests Passing: 25/25              │
-│  ├── Concurrent Test: 20→1 TXN        ├── Code Coverage: 79%                │
-│  └── Invalid Keys Blocked: 50         └── Performance: 21.5 req/sec         │
-│                                                                              │
-└─────────────────────────────────────────────────────────────────────────────┘
+payment-idempotency-proxy/
+├── app/                         # Core application
+│   ├── main.py                  # FastAPI app, routes, mock payment provider
+│   ├── idempotency.py           # IdempotencyService — exactly-once logic
+│   ├── database.py              # SQLAlchemy models, connection pool
+│   ├── locks.py                 # RedisLock + LockService (distributed locks)
+│   ├── metrics.py               # Prometheus metrics definitions
+│   └── schemas.py               # Pydantic request/response schemas
+├── config/
+│   ├── prometheus.yml           # Prometheus scrape configuration
+│   └── garphana_dashboard.json  # Grafana dashboard (importable)
+├── scripts/
+│   ├── generate_traffic.py      # Simulates realistic payment traffic
+│   └── steady_load.py           # Steady load generator for clean graphs
+├── tests/
+│   ├── test_api.py              # API-level tests (health, schemas, CORS)
+│   ├── test_idempotency.py      # Idempotency tests (concurrency, caching, locks)
+│   └── test_redis_performance.py # Redis cache/lock benchmark script
+├── docker-compose.yml           # PostgreSQL, Redis, Redis Commander, Prometheus, Grafana
+├── run.py                       # Uvicorn entry point
+├── requirements.txt             # Python dependencies
+└── README.md
 ```
 
 ---
 
-## 🏗️ Architecture Deep Dive
+##  Quick Start
 
-## Architecture
+### Prerequisites
 
-![System Architecture](architecture.svg)
+- Python 3.11+
+- Docker & Docker Compose
 
-## Request Flow
-
-![Idempotency Request Flow](flow.svg)
-
----
-
-## 🚀 Quick Start
-
-### Manual Setup (5 minutes)
+### Setup (5 minutes)
 
 ```bash
-# 1. Clone repository
+# 1. Clone & enter
 git clone https://github.com/yourusername/payment-idempotency-proxy
 cd payment-idempotency-proxy
 
 # 2. Create virtual environment
 python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
+# Windows
+venv\Scripts\activate
+# macOS/Linux
+# source venv/bin/activate
 
 # 3. Install dependencies
 pip install -r requirements.txt
@@ -156,38 +134,36 @@ pip install -r requirements.txt
 # 4. Start infrastructure (PostgreSQL, Redis, Prometheus, Grafana)
 docker-compose up -d
 
-# 5. Initialize database
-python -c "from app.database import init_db; init_db()"
-
-# 6. Run tests to verify everything works
+# 5. Run tests to verify
 pytest tests/ -v
 
-# 7. Start the server
+# 6. Start the proxy (database tables are auto-created on startup)
 python run.py
 ```
 
-### Verify Installation
+### Verify It's Working
 
 ```bash
 # Health check
 curl http://localhost:8000/health
 
-# Expected response
-{
-  "status": "healthy",
-  "service": "payment-idempotency-proxy",
-  "dependencies": {
-    "redis": "connected",
-    "postgresql": "connected"
-  }
-}
+# Expected:
+# {
+#   "status": "healthy",
+#   "service": "payment-idempotency-proxy",
+#   "version": "1.0.0",
+#   "dependencies": {
+#     "redis": "connected",
+#     "postgresql": "connected"
+#   }
+# }
 ```
 
-### First Payment
+### Your First Payment
 
 ```bash
-# Generate idempotency key
-IDEMPOTENCY_KEY=$(uuidgen)
+# Generate a UUID v4 key
+IDEMPOTENCY_KEY=$(uuidgen)   # or use Python: python -c "import uuid; print(uuid.uuid4())"
 
 # Send payment
 curl -X POST http://localhost:8000/api/v1/payments \
@@ -195,40 +171,53 @@ curl -X POST http://localhost:8000/api/v1/payments \
   -H "Content-Type: application/json" \
   -d '{"amount": 99.99, "currency": "USD", "source": "card_123"}'
 
-# Duplicate request (same key) - returns cached response, no double charge!
+# Duplicate request — returns cached response, no double charge!
 curl -X POST http://localhost:8000/api/v1/payments \
   -H "Idempotency-Key: $IDEMPOTENCY_KEY" \
+  -H "Content-Type: application/json" \
   -d '{"amount": 99.99, "currency": "USD", "source": "card_123"}'
 ```
 
 ---
 
-## 📚 API Reference
+##  API Reference
 
-### POST /api/v1/payments
+### POST `/api/v1/payments`
 
-**The only endpoint you'll ever need for creating payments.**
+The main endpoint. Requires a valid UUID v4 `Idempotency-Key` header.
 
 | Header | Required | Format | Example |
 |--------|----------|--------|---------|
-| `Idempotency-Key` |  Yes | UUID v4 | `123e4567-e89b-12d3-a456-426614174000` |
-| `Content-Type` |  Yes | `application/json` | - |
+| `Idempotency-Key` | Yes | UUID v4 | `123e4567-e89b-12d3-a456-426614174000` |
+| `Content-Type` | Yes | `application/json` | — |
 
-**Request Body:**
+**Request body:**
+
 ```json
 {
-  "amount": 99.99,              // Required, 0.01 - 10000
-  "currency": "USD",            // Optional, default "USD"
-  "source": "card_123456",      // Required, prefix: card_, bank_, crypto_
-  "description": "Order #1234", // Optional
-  "metadata": {                 // Optional
+  "amount": 99.99,               // Required, 0.01–10,000
+  "currency": "USD",             // Optional, default "USD"
+  "source": "card_123456",       // Required, prefix: card_, bank_, crypto_
+  "description": "Order #1234",  // Optional, max 255 chars
+  "metadata": {                  // Optional
     "customer_id": "cust_123",
     "order_id": "ord_456"
   }
 }
 ```
 
-**Response (200 OK - First Request or Cache Hit):**
+**Responses:**
+
+| Status | Meaning |
+|--------|---------|
+| `200` | Success (first request or cache hit) |
+| `400` | Invalid Idempotency-Key format |
+| `409` | Request is being processed by another instance |
+| `422` | Validation error (amount, source, etc.) |
+| `500` | Provider error |
+
+**200 response:**
+
 ```json
 {
   "status": "succeeded",
@@ -239,176 +228,190 @@ curl -X POST http://localhost:8000/api/v1/payments \
 }
 ```
 
-**Response (409 Conflict - Being Processed):**
-```json
-{
-  "error": "Request is already being processed",
-  "idempotency_key": "123e4567-...",
-  "status": "processing",
-  "message": "Please retry in a few seconds"
-}
-```
-
-**Error Responses:**
-
-| Status | Meaning | Client Action |
-|--------|---------|---------------|
-| 400 | Invalid request | Fix amount/source format |
-| 409 | Concurrent processing | Retry with exponential backoff |
-| 500 | Provider error | Retry with new key |
-
-### GET /api/v1/payments/{transaction_id}
+### GET `/api/v1/payments/{transaction_id}`
 
 Retrieve payment details.
 
-```bash
-curl http://localhost:8000/api/v1/payments/txn_abc123def456
+### GET `/api/v1/idempotency/{idempotency_key}`
+
+Debug endpoint to check the status of an idempotency key.
+
+### GET `/health`
+
+Kubernetes-style health check with dependency status.
+
+### GET `/metrics`
+
+Prometheus metrics endpoint (scraped by Prometheus).
+
+### GET `/redis/stats`
+
+Live Redis statistics: cache key count, memory usage, version, uptime, hit ratio.
+
+### GET `/`
+
+Root endpoint with API overview and available endpoints.
+
+---
+
+##  Distributed Locking
+
+The proxy uses Redis SET NX (set if not exists) with Lua-based atomic release to serialize concurrent requests with the same idempotency key.
+
+```mermaid
+sequenceDiagram
+    participant A as Instance A
+    participant B as Instance B
+    participant Redis
+    participant PG as PostgreSQL
+    participant Provider as Payment Provider
+
+    A->>Redis: SET NX lock:key-123
+    Redis-->>A: OK (acquired)
+    A->>PG: INSERT status=processing
+    A->>Provider: Charge $99.99
+    Provider-->>A: txn_abc123
+    A->>PG: UPDATE status=completed
+    A->>Redis: SETEX cache:key-123 (24h)
+    A->>Redis: DEL lock:key-123
+
+    B->>Redis: SET NX lock:key-123
+    Redis-->>B: nil (not acquired)
+    B->>Redis: GET cache:key-123
+    Redis-->>B: cached response
+    Note over B: Returns cached result — no charge
 ```
 
-**Response:**
-```json
-{
-  "transaction_id": "txn_abc123def456",
-  "amount": 99.99,
-  "currency": "USD",
-  "status": "completed",
-  "created_at": "2024-01-15T10:30:00Z",
-  "completed_at": "2024-01-15T10:30:01Z"
-}
-```
+**Lock features:**
+- Auto-expiry (prevents deadlocks)
+- Retry with backoff
+- Lua-scripted atomic release (safety check on ownership)
+- `fail_fast` mode for immediate rejection
 
-### GET /api/v1/idempotency/{idempotency_key}
+---
 
-Debug endpoint to check key status.
+##  Observability
+
+### Prometheus Metrics (20+ metrics)
+
+| Metric | Type | Description |
+|--------|------|-------------|
+| `idempotency_successful_payments_total` | Counter | Successful payments |
+| `idempotency_failed_payments_total` | Counter | Failed payments |
+| `idempotency_cache_hits_total` | Counter | Cache hits (duplicate requests) |
+| `idempotency_cache_misses_total` | Counter | Cache misses (first requests) |
+| `idempotency_lock_acquisitions_total` | Counter | Distributed lock acquisitions |
+| `idempotency_lock_failures_total` | Counter | Lock acquisition failures |
+| `idempotency_request_duration_seconds` | Histogram | End-to-end request latency |
+| `idempotency_cache_lookup_seconds` | Histogram | Redis cache lookup latency |
+| `idempotency_db_query_seconds` | Histogram | Database query latency |
+| `idempotency_redis_connected` | Gauge | Redis connection status (0/1) |
+| `idempotency_total_amount_processed_cents` | Counter | Total monetary volume (cents) |
+
+### Grafana Dashboard
+
+An importable Grafana dashboard is at `config/garphana_dashboard.json`.
+
+Access Grafana at `http://localhost:3000` (default: `admin`/`admin`).
+
+**To import:** Log in to Grafana → **Create** → **Import** → Upload the JSON file or paste its contents.
+
+**Dashboard panels include:**
+- Payment rate (success/failure per second)
+- Cache hit ratio
+- Request latency (P50/P95/P99)
+- Lock acquisition rate
+- Database connection pool usage
+- Redis memory & cache key count
+- Financial volume (total amount processed)
+
+---
+
+##  Infrastructure
+
+All services are defined in `docker-compose.yml`:
+
+| Service | Port | Purpose |
+|---------|------|---------|
+| FastAPI Proxy | `:8000` | Payment idempotency API |
+| PostgreSQL | `:5433` | Audit trail (mapped to 5433 to avoid local conflicts) |
+| Redis | `:6379` | Response cache + distributed locks |
+| Redis Commander | `:8081` | Web UI for inspecting Redis |
+| Prometheus | `:9090` | Metrics collection |
+| Grafana | `:3000` | Metrics visualization |
+
+---
+
+##  Generating Traffic
+
+Two scripts are provided for load testing and demo purposes:
 
 ```bash
-curl http://localhost:8000/api/v1/idempotency/123e4567-e89b-12d3-a456-426614174000
-```
+# Generate 50 random payments + concurrent duplicate test
+python scripts/generate_traffic.py
 
-### GET /health
-
-Kubernetes-style health check.
-
-```bash
-curl http://localhost:8000/health
-```
-
-### GET /metrics
-
-Prometheus metrics endpoint.
-
-```bash
-curl http://localhost:8000/metrics
+# Steady stream (1 req every 0.5s) for clean Grafana graphs
+python scripts/steady_load.py
 ```
 
 ---
 
-## 📈 Performance Benchmarks
-
-### Test Environment
-- **CPU:** 8-core Intel Xeon
-- **RAM:** 16GB
-- **Network:** 1Gbps
-- **Redis:** 7.0 (Docker)
-- **PostgreSQL:** 15 (Docker)
-
-### Results
-
-| Scenario | Requests | Concurrency | Throughput | P95 Latency | Success Rate |
-|----------|----------|-------------|------------|-------------|--------------|
-| **First-time requests** | 1,000 | 50 | 850 req/s | 45ms | 100% |
-| **Duplicate requests** | 1,000 | 50 | 3,200 req/s | 12ms | 100% |
-| **Mixed (80% duplicate)** | 1,000 | 50 | 2,100 req/s | 18ms | 100% |
-| **Lock contention** | 1,000 (same key) | 100 | 950 req/s | 52ms | 100% |
-
-### Cache Effectiveness
-
-```
-Cache Hit Ratio by Request Pattern
-┌─────────────────────────────────────────────────────────────┐
-│ Same key, immediate:    100% ████████████████████           │
-│ Same key, 1 min later:  100% ████████████████████           │
-│ Same key, 12 hours:     100% ████████████████████           │
-│ Same key, 25 hours:       0% ░░░░░░░░░░░░░░░░░░░░ (TTL)    │
-│ Different keys:           0% ░░░░░░░░░░░░░░░░░░░░           │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Resource Usage
-
-```
-Component    CPU      Memory    Network
-─────────────────────────────────────────
-FastAPI      15-25%   150MB     10-20 Mbps
-Redis        5-10%    50MB      5-10 Mbps
-PostgreSQL   10-15%   100MB     5-10 Mbps
-─────────────────────────────────────────
-Total        35-55%   300MB     20-40 Mbps
-```
-
----
-
-## 🔍 Observability Stack
-
-### Prometheus Metrics (20+ Tracked)
-
-| Metric | Current Value | Description |
-|--------|--------------|-------------|
-| `idempotency_successful_payments_total` | 148 | Successful payments |
-| `idempotency_failed_payments_total` | 12 | Failed payments (6.4% simulated) |
-| `idempotency_invalid_keys_total` | 50 | Invalid UUID rejections |
-| `idempotency_cache_hits_total` | 280 | Cache hits |
-| `idempotency_cache_misses_total` | 12 | Cache misses |
-| `idempotency_cache_hit_ratio` | 95.9% | Cache efficiency |
-| `idempotency_lock_acquisitions_total` | 20 | Distributed lock count |
-| `idempotency_lock_success_rate` | 100% | Lock success |
-| `idempotency_db_pool_size` | 10 | Database connections |
-| `idempotency_request_duration_seconds` | 94.2ms avg | Request latency |
-| `idempotency_total_amount_processed_cents` | $12,500 | Total volume |
-
-### Grafana Dashboards
-
-Access at `http://localhost:3000` (admin/admin)
-
-**Pre-configured Panels:**
-
-1. **Payment Success Rate** - Heatmap of success/failure/invalid
-2. **Cache Performance** - Hit ratio gauge (95.9%)
-3. **Request Latency** - P95 latency over time
-4. **Financial Volume** - Real-time amount processed
-5. **Lock Acquisitions** - Distributed lock rate
-6. **Database Pool** - Connection utilization
-
----
-
-## 🧪 Testing Strategy
-
-
-### Running Tests
+##  Testing
 
 ```bash
-# All tests with coverage
+# Run all tests
+pytest tests/ -v
+
+# With coverage
 pytest tests/ -v --cov=app --cov-report=html
 
-# Unit tests only
-pytest tests/test_idempotency.py -v -m unit
-
-# Integration tests
-pytest tests/test_idempotency.py -v -m integration
-
-# Performance test
-pytest tests/test_idempotency.py::test_performance_under_load -v
+# Redis cache/lock performance benchmark
+python tests/test_redis_performance.py
 ```
 
-### Key Test Cases
+### Test coverage
 
-| Test | What It Verifies | Result |
-|------|-----------------|--------|
-| `test_concurrent_identical_requests` | 20 requests → 1 transaction |  PASS |
-| `test_request_hash_tamper_detection` | Same key, different body → rejected |  PASS |
-| `test_redis_lock_functionality` | Lock acquire/release atomicity |  PASS |
-| `test_cross_key_isolation` | Different keys → independent |  PASS |
-| `test_response_caching` | Duplicate → cached response |  PASS |
-| `test_invalid_keys` | 12 invalid formats → 400 |  PASS |
+| Test File | Tests | What It Verifies |
+|-----------|-------|------------------|
+| `test_api.py` | 4 | Health check, root endpoint, metrics endpoint, schema validation |
+| `test_idempotency.py` | 21 | Concurrent identical requests, cache hits, lock functionality, cross-key isolation, tamper detection, CORS, response caching, performance under load |
+| `test_redis_performance.py` | Manual (standalone script) | Cache hit ratio, concurrent cache access, distributed lock contention |
+
+Key guarantee: **20 concurrent requests with the same idempotency key → 1 transaction in the database.**
 
 ---
+
+##  Configuration
+
+Environment variables (with defaults):
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DATABASE_URL` | `postgresql://admin:password@localhost/idempotency` | PostgreSQL connection string |
+| `REDIS_HOST` | `localhost` | Redis host |
+| `REDIS_PORT` | `6379` | Redis port |
+| `REDIS_PASSWORD` | `redispass` | Redis password |
+
+---
+
+##  Development
+
+```bash
+# Hot-reload server (auto-restarts on changes)
+python run.py
+
+# Database models are auto-created at startup via init_db()
+# No migration tool required for development
+```
+
+---
+
+##  Stack
+
+- **Python 3.11** — type hints throughout
+- **FastAPI** — async request handling, auto-generated OpenAPI docs at `/docs`
+- **SQLAlchemy 2.0** — ORM with connection pooling
+- **Redis 7** — caching (SETEX) + distributed locking (SET NX + Lua)
+- **PostgreSQL 15** — durable audit trail
+- **Prometheus + Grafana** — metrics and visualization
+- **Docker** — containerized infrastructure

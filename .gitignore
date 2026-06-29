@@ -51,3 +51,5 @@ Thumbs.db
 .coverage.*
 .coverage_report/
 resumeProof/
+article/
+agent.md

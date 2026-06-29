@@ -1,31 +1,8 @@
-"""
-Prometheus Metrics Configuration
-Tracks all important metrics for monitoring and alerting
-"""
-
 from prometheus_client import Counter, Histogram, Gauge, Info
-import time
-from functools import wraps
-from typing import Callable
-import logging
-
-logger = logging.getLogger(__name__)
 
 
-class Metrics:
-    """
-    Centralized metrics collection for the idempotency proxy
-    
-    Types of metrics:
-    - Counter: Only increases (requests, errors)
-    - Histogram: Measures distributions (latency)
-    - Gauge: Goes up and down (cache size, connections)
-    - Info: Static information (version)
-    """
-    
+class Metrics:    
     def __init__(self):
-        # ============ REQUEST METRICS ============
-        
         self.payment_requests_total = Counter(
             'idempotency_payment_requests_total',
             'Total number of payment requests received',
@@ -51,9 +28,7 @@ class Metrics:
             'idempotency_invalid_keys_total',
             'Total number of invalid idempotency key format errors'
         )
-        
-        # ============ IDEMPOTENCY METRICS ============
-        
+
         self.idempotency_cache_hits = Counter(
             'idempotency_cache_hits_total',
             'Total number of idempotency cache hits (duplicate requests)'
@@ -68,15 +43,12 @@ class Metrics:
             'idempotency_record_creations_total',
             'Total number of new idempotency records created'
         )
-        
-        # Current cache size (up/down)
+
         self.cache_size = Gauge(
             'idempotency_cache_size',
             'Current number of cached idempotency responses'
         )
-        
-        # ============ REDIS METRICS ============
-        
+
         self.redis_connected = Gauge(
             'idempotency_redis_connected',
             'Redis connection status (1=connected, 0=disconnected)'
@@ -99,9 +71,6 @@ class Metrics:
             'Redis memory usage in bytes'
         )
 
-        
-        # ============ LOCK METRICS ============
-        
         self.lock_acquisitions = Counter(
             'idempotency_lock_acquisitions_total',
             'Total number of distributed lock acquisitions'
@@ -117,9 +86,7 @@ class Metrics:
             'How long locks are held',
             buckets=[0.01, 0.05, 0.1, 0.5, 1, 2, 5]
         )
-        
-        # ============ LATENCY METRICS ============
-        
+
         self.request_duration = Histogram(
             'idempotency_request_duration_seconds',
             'Total request processing duration (end-to-end)',
@@ -143,9 +110,7 @@ class Metrics:
             'Time spent on database queries',
             buckets=[0.001, 0.005, 0.01, 0.05, 0.1, 0.5]
         )
-        
-        # ============ DATABASE METRICS ============
-        
+
         self.db_pool_size = Gauge(
             'idempotency_db_pool_size',
             'Current database connection pool size'
@@ -155,9 +120,7 @@ class Metrics:
             'idempotency_db_pool_checked_out',
             'Number of database connections currently checked out'
         )
-        
-        # ============ BUSINESS METRICS ============
-        
+
         self.total_amount_processed = Counter(
             'idempotency_total_amount_processed_cents',
             'Total monetary amount processed (in cents)'
@@ -168,12 +131,9 @@ class Metrics:
             'Rolling average payment amount (in cents)'
         )
         
-        # Running total for average calculation
         self._amount_sum = 0
         self._payment_count = 0
-        
-        # ============ SERVICE INFO ============
-        
+
         self.service_info = Info('idempotency_service', 'Service information')
         self.service_info.info({
             'version': '1.0.0',
@@ -189,7 +149,6 @@ class Metrics:
         self.idempotency_cache_misses.inc()
     
     def track_lock_acquired(self, duration_seconds: float = None):
-        """Record a successful lock acquisition"""
         self.lock_acquisitions.inc()
         if duration_seconds:
             self.lock_hold_duration.observe(duration_seconds)
@@ -199,7 +158,6 @@ class Metrics:
         self.lock_failures.inc()
     
     def track_payment_success(self, amount_cents: int):
-        """Record a successful payment"""
         self.successful_payments_total.inc()
         self.payment_requests_total.labels(status='success').inc()
         self.total_amount_processed.inc(amount_cents)
@@ -224,59 +182,18 @@ class Metrics:
         self.invalid_keys_total.inc()
         self.payment_requests_total.labels(status='invalid').inc()
     
-    def update_cache_size(self, size: int):
-        """Update the current cache size gauge"""
-        self.cache_size.set(size)
-    
     def update_db_pool_stats(self, pool_size: int, checked_out: int):
-        """Update database connection pool statistics"""
         self.db_pool_size.set(pool_size)
         self.db_pool_checked_out.set(checked_out)
     
     def observe_request_duration(self, duration: float):
-        """Observe total request duration"""
         self.request_duration.observe(duration)
     
-    def observe_payment_duration(self, duration: float):
-        """Observe payment provider duration"""
-        self.payment_processing_duration.observe(duration)
-    
     def observe_cache_lookup(self, duration: float):
-        """Observe cache lookup duration"""
         self.cache_lookup_duration.observe(duration)
     
     def observe_db_query(self, duration: float):
-        """Observe database query duration"""
         self.db_query_duration.observe(duration)
 
 
-# Create global metrics instance
 metrics = Metrics()
-
-
-def track_request(func: Callable):
-    """Decorator to automatically track request duration"""
-    @wraps(func)
-    async def wrapper(*args, **kwargs):
-        start_time = time.time()
-        try:
-            result = await func(*args, **kwargs)
-            return result
-        finally:
-            duration = time.time() - start_time
-            metrics.observe_request_duration(duration)
-    return wrapper
-
-
-def track_payment_processing(func: Callable):
-    """Decorator to track payment provider duration"""
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        start_time = time.time()
-        try:
-            result = func(*args, **kwargs)
-            return result
-        finally:
-            duration = time.time() - start_time
-            metrics.observe_payment_duration(duration)
-    return wrapper

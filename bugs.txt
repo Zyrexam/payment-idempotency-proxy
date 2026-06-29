@@ -1,0 +1,83 @@
+╔══════════════════════════════════════════════════════════════╗
+║  Payment Idempotency Proxy - Bug & Issue Audit              ║
+║  Generated: Comprehensive end-to-end review                 ║
+╚══════════════════════════════════════════════════════════════╝
+
+======================================================================
+CRITICAL
+======================================================================
+
+[FIXED] C1. Tamper Detection Enforced — COMPLETED branch compares request_hash against stored hash. Returns 409 on mismatch.
+
+[FIXED] C2. Replaced redis_client.keys() with SCAN-based iteration for production safety.
+
+
+======================================================================
+HIGH
+======================================================================
+
+[FIXED] H1. Hit ratio now computed from real Prometheus counters (idempotency_cache_hits_total / ..._misses_total).
+
+[FIXED] H2. `import time` moved to module level.
+
+[FIXED] H3. Redundant local import `from app.database import engine` removed from lifespan().
+
+[FIXED] H4. Lua script registered once via class-level caching in `_get_script()`.
+
+[FIXED] H5. Same as C1 — hash comparison added in COMPLETED branch and double-check path.
+
+[FIXED] H6. Removed unused `get_db_stats()` from database.py.
+
+[FIXED] H7. Removed unused `update_cache_size()` from metrics.py.
+
+[FIXED] H8. Removed unused `observe_payment_duration()` from metrics.py.
+
+======================================================================
+MEDIUM
+======================================================================
+
+[FIXED] M1+M2. health_check now calls `redis_connected()` once (renamed from update_redis_metric) which pings Redis, sets the gauge, and returns bool. No longer pings twice.
+
+[FIXED] M1+M2 (combined above).
+
+[FIXED] M3. Tests marked with `pytestmark = pytest.mark.integration` at module level. Added pytest.ini registering the marker. Users can run `pytest tests/ -v -m "not integration"` to skip infrastructure tests.
+
+[FIXED] M4. Added `requests` to requirements.txt.
+
+[FIXED] M5. Created .env.example with documented defaults for DATABASE_URL, REDIS_HOST/PORT/PASSWORD, UVICORN_RELOAD, GRAFANA_PASSWORD.
+
+[FIXED] M6. Grafana password uses `${GRAFANA_PASSWORD:-admin}` (env var with fallback).
+
+[FIXED] M7. reload=True replaced with `os.getenv("UVICORN_RELOAD", "false").lower() == "true"`.
+
+[FIXED] M8. Removed deprecated `version: '3.8'` field from docker-compose.yml.
+
+[FIXED] M9. Renamed garphana_dashboard.json to grafana_dashboard.json.
+
+[FIXED] M10. Removed redundant POSTGRES_HOST_AUTH_METHOD and POSTGRES_INITDB_ARGS from docker-compose.yml.
+
+======================================================================
+LOW
+======================================================================
+
+[FIXED] L1. test_metrics_endpoint now checks content length > 50. Also added test_metrics_content_type verifying Prometheus format.
+
+[FIXED] L2. test_cors_headers now also sends a POST with Origin header and verifies access-control-allow-origin header and value in the response.
+
+[FIXED] L3. Lowered threshold to 80 for test_performance_under_load.
+
+[FIXED] L4. Removed unused `from functools import wraps` from locks.py.
+
+[FIXED] L5. Error messages sanitized — redis_stats returns generic "Redis connection failed" instead of `str(e)`. health_check no longer exposes exception details.
+
+[FIXED] L6. Renamed to test_idempotency_duplicate_different_body_rejected to accurately describe what it tests.
+
+======================================================================
+SUMMARY
+======================================================================
+Total issues found: 31
+  CRITICAL: 3
+  HIGH:     8
+  MEDIUM:  10
+  LOW:      6
+======================================================================

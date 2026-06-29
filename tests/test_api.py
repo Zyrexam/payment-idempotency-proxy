@@ -2,12 +2,10 @@ import pytest
 from fastapi.testclient import TestClient
 from app.main import app
 
-# Create a test client - it simulates HTTP requests without a real server
 client = TestClient(app)
 
 
 def test_health_check():
-    """Test that /health returns 200 OK"""
     response = client.get("/health")
     assert response.status_code == 200
     
@@ -18,7 +16,6 @@ def test_health_check():
 
 
 def test_root_endpoint():
-    """Test that / returns API info"""
     response = client.get("/")
     assert response.status_code == 200
     
@@ -29,17 +26,21 @@ def test_root_endpoint():
 
 
 def test_metrics_endpoint():
-    """Test metrics placeholder"""
     response = client.get("/metrics")
     assert response.status_code == 200
-    # We'll add more specific metrics tests in Part 2
+    assert len(response.text) > 50  # Ensure actual metric data is present
+
+
+def test_metrics_content_type():
+    response = client.get("/metrics")
+    assert response.status_code == 200
+    assert "text/plain" in response.headers["content-type"]
+    assert "idempotency_" in response.text
 
 
 def test_payment_schema_validation():
-    """Test our Pydantic schemas work correctly"""
     from app.schemas import PaymentRequest
     
-    # Valid payment request
     valid_request = PaymentRequest(
         amount=99.99,
         currency="USD",
@@ -48,17 +49,9 @@ def test_payment_schema_validation():
     )
     assert valid_request.amount == 99.99
     assert valid_request.currency == "USD"
-    
-    # Invalid: negative amount (should raise error when creating)
-    try:
+
+    with pytest.raises(Exception):
         PaymentRequest(amount=-10, currency="USD", source="card_123")
-        assert False, "Should have raised error"
-    except Exception:
-        pass  # Expected
-    
-    # Invalid: wrong source prefix
-    try:
+
+    with pytest.raises(Exception):
         PaymentRequest(amount=100, currency="USD", source="invalid_source")
-        assert False, "Should have raised error"
-    except Exception:
-        pass  # Expected

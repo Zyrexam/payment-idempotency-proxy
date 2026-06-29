@@ -1,11 +1,4 @@
-"""
-Payment Idempotency Proxy - Main FastAPI Application
-FIXED: Removed @track_request decorator (breaks Depends)
-"""
-
-import os
-
-from fastapi import FastAPI, HTTPException, Depends, Header, Request, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Depends, Header, Request
 from fastapi.responses import JSONResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
@@ -13,64 +6,86 @@ from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 import redis
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 import logging
 import time
-from app.database import get_db, init_db, PaymentTransaction, IdempotencyRecord
+from app.database import get_db, init_db, engine, PaymentTransaction, IdempotencyRecord
 from contextlib import asynccontextmanager
-from fastapi.middleware.cors import CORSMiddleware
 from app.idempotency import IdempotencyService
 from app.schemas import PaymentRequest
 from app.locks import LockService
-from app.metrics import metrics  # Removed track_request import
+from app.metrics import metrics
+from app.config import settings
+from sqlalchemy import text
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Initialize FastAPI
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info(" Starting Payment Idempotency Proxy v1.0.0")
+
+    try:
+        redis_client.ping()
+        logger.info(" Connected to Redis")
+        redis_connected()
+    except Exception as e:
+        logger.error(f" Redis connection failed: {e}")
+        redis_connected()
+
+    try:
+        init_db()
+        logger.info(" Database initialized")
+
+        metrics.update_db_pool_stats(engine.pool.size(), 0)
+    except Exception as e:
+        logger.error(f" Database initialization failed: {e}")
+
+    yield
+
+    logger.info(" Shutting down...")
+    redis_client.close()
+    logger.info("Redis connection closed")
+
+
 app = FastAPI(
     title="Payment Idempotency Proxy",
     description="Production-grade idempotent payment processing proxy",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
-
-# CORS
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins (configure properly in production)
+    allow_origins=["*"],  # Allow all origins
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-    allow_headers=["*"],  # Allow all headers
-    expose_headers=["*"],  # Expose all headers to client
+    allow_headers=["*"],
+    expose_headers=["*"],
     max_age=3600,  # Cache preflight for 1 hour
 )
-# Initialize Redis
+
 redis_client = redis.Redis(
-    host=os.getenv("REDIS_HOST", "localhost"),
-    port=int(os.getenv("REDIS_PORT", 6379)),
-    password=os.getenv("REDIS_PASSWORD", "redispass"),
+    host=settings.redis_host,
+    port=settings.redis_port,
+    password=settings.redis_password,
     decode_responses=True,
     health_check_interval=30
 )
 
 
-def update_redis_metric():
-    """Update Redis connection metric"""
+def redis_connected() -> bool:
     try:
         redis_client.ping()
         metrics.redis_connected.set(1)
+        return True
     except:
         metrics.redis_connected.set(0)
-
-@app.middleware("http")
-async def update_redis_metric_middleware(request: Request, call_next):
-    update_redis_metric()
-    return await call_next(request)
+        return False
 
 def validate_uuid(idempotency_key: str) -> bool:
-    """Validate idempotency key format (UUID v4)"""
     try:
         uuid.UUID(idempotency_key, version=4)
         return True
@@ -79,25 +94,11 @@ def validate_uuid(idempotency_key: str) -> bool:
 
 
 def mock_payment_provider(request_body: str) -> tuple[int, str]:
-    """
-    Mock payment provider for demonstration
-    Simulates Stripe/Adyen/PayPal behavior
-    """
-    import random
-    
-    # Simulate network latency
     time.sleep(0.05)
     
     data = json.loads(request_body)
     amount = data.get("amount", 0)
-    
-    # Simulate random failures (5% of requests)
-    # if random.random() < 0.05:
-    #     logger.warning(f"⚠️ Simulated provider error")
-    #     metrics.track_payment_failure()
-    #     return 500, json.dumps({"error": "Provider temporarily unavailable"})
-    
-    # Validate amount limits
+
     if amount > 10000:
         metrics.track_payment_failure()
         return 400, json.dumps({
@@ -112,59 +113,16 @@ def mock_payment_provider(request_body: str) -> tuple[int, str]:
         })
     
     transaction_id = f"txn_{uuid.uuid4().hex[:16]}"
-    
-    # Track successful payment
-    metrics.track_payment_success(int(amount * 100))
+
+    metrics.track_payment_success(int(round(amount * 100)))
     
     return 200, json.dumps({
         "status": "succeeded",
         "transaction_id": transaction_id,
         "amount": amount,
         "currency": data.get("currency", "USD"),
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
     })
-
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Lifespan context manager for startup/shutdown events"""
-    # Startup
-    logger.info("🚀 Starting Payment Idempotency Proxy v1.0.0")
-    
-    try:
-        redis_client.ping()
-        logger.info("✅ Connected to Redis")
-        update_redis_metric()
-    except Exception as e:
-        logger.error(f"❌ Redis connection failed: {e}")
-        update_redis_metric()
-    
-    try:
-        init_db()
-        logger.info("✅ Database initialized")
-        
-        from app.database import engine
-        metrics.update_db_pool_stats(engine.pool.size(), 0)
-    except Exception as e:
-        logger.error(f"❌ Database initialization failed: {e}")
-    
-    yield  # Server runs here
-    
-    # Shutdown
-    logger.info("🛑 Shutting down...")
-    redis_client.close()
-    logger.info("Redis connection closed")
-
-# Update app initialization:
-app = FastAPI(
-    title="Payment Idempotency Proxy",
-    description="Production-grade idempotent payment processing proxy",
-    version="1.0.0",
-    lifespan=lifespan  # Add this line
-)
-
-# Remove the @app.on_event("startup") and @app.on_event("shutdown") decorators
 
 
 @app.post("/api/v1/payments")
@@ -174,15 +132,9 @@ async def create_payment(
     idempotency_key: str = Header(..., alias="Idempotency-Key"),
     db: Session = Depends(get_db)
 ):
-    """
-    Create a payment with idempotency support
-    
-    The Idempotency-Key header must be a valid UUID v4.
-    Duplicate requests with the same key will return the cached response.
-    """
+    """Create payment with idempotency support"""
     start_time = time.time()
     
-    # Validate idempotency key
     if not validate_uuid(idempotency_key):
         metrics.track_invalid_key()
         raise HTTPException(
@@ -190,14 +142,12 @@ async def create_payment(
             detail="Invalid Idempotency-Key format. Must be a valid UUID v4."
         )
     
-    logger.info(f"📥 Payment request - Key: {idempotency_key[:8]}..., Amount: ${payment_request.amount}")
-    
-    # Process with idempotency
+    logger.info(f" Payment request - Key: {idempotency_key[:8]}..., Amount: ${payment_request.amount}")
+
     idempotency_service = IdempotencyService(redis_client, db)
     request_body = payment_request.model_dump_json()
     
     try:
-        # Track cache lookup
         cache_start = time.time()
         status_code, response_body = idempotency_service.process_payment(
             idempotency_key=idempotency_key,
@@ -205,19 +155,17 @@ async def create_payment(
             payment_processor=mock_payment_provider
         )
         metrics.observe_cache_lookup(time.time() - cache_start)
-        
-        # Track conflict if applicable
+
         if status_code == 409:
             metrics.track_conflict()
-        
-        # Track request duration
+
         metrics.observe_request_duration(time.time() - start_time)
         
-        logger.info(f"📤 Response: {status_code} for key {idempotency_key[:8]}...")
+        logger.info(f" Response: {status_code} for key {idempotency_key[:8]}...")
         return JSONResponse(status_code=status_code, content=json.loads(response_body))
         
     except Exception as e:
-        logger.exception(f"💥 Payment processing error: {e}")
+        logger.exception(f" Payment processing error: {e}")
         metrics.track_payment_failure()
         metrics.observe_request_duration(time.time() - start_time)
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -272,7 +220,6 @@ async def get_idempotency_status(idempotency_key: str, db: Session = Depends(get
 
 @app.get("/metrics")
 async def get_metrics():
-    """Prometheus metrics endpoint"""
     return Response(
         content=generate_latest(),
         media_type=CONTENT_TYPE_LATEST
@@ -281,89 +228,78 @@ async def get_metrics():
 
 @app.get("/redis/stats")
 async def redis_stats():
-    """Get Redis statistics for monitoring"""
     try:
-        # Get Redis INFO
         info = redis_client.info()
-        
-        # Get cache keys count
-        cache_keys = len(redis_client.keys("idempotency:response:*"))
-        
-        # Get memory usage
+        # Use SCAN instead of KEYS for production safety
+        cache_keys = 0
+        cursor = 0
+        while True:
+            cursor, keys = redis_client.scan(
+                cursor=cursor,
+                match="idempotency:response:*",
+                count=1000
+            )
+            cache_keys += len(keys)
+            if cursor == 0:
+                break
         memory_used = info.get('used_memory', 0)
-        
-        # Update metrics
         metrics.redis_cache_keys.set(cache_keys)
         metrics.redis_memory_usage.set(memory_used)
         metrics.redis_connected.set(1)
         
+        # Compute hit ratio from Prometheus counters
+        hits = metrics.idempotency_cache_hits._value.get()
+        misses = metrics.idempotency_cache_misses._value.get()
+        total = hits + misses
+        hit_ratio = f"{hits/total*100:.1f}%" if total > 0 else "0.0%"
+
         return {
             "connected": True,
             "cache_keys": cache_keys,
             "memory_used_mb": round(memory_used / 1024 / 1024, 2),
             "redis_version": info.get('redis_version'),
             "uptime_seconds": info.get('uptime_in_seconds'),
-            "hit_ratio": f"{140/(140+6)*100:.1f}%",
+            "hit_ratio": hit_ratio,
             "total_connections": info.get('total_connections_received'),
             "total_commands": info.get('total_commands_processed')
         }
-    except Exception as e:
+    except Exception:
         metrics.redis_connected.set(0)
-        return {"connected": False, "error": str(e)}
+        return {"connected": False, "error": "Redis connection failed"}
 
 
-# Add this function
-def check_redis_connection():
-    """Update Redis connection metric"""
-    try:
-        redis_client.ping()
-        metrics.redis_connected.set(1)
-        return True
-    except:
-        metrics.redis_connected.set(0)
-        return False
-
-# Call it in health check
 @app.get("/health")
 async def health_check():
-    check_redis_connection()
-    """Health check endpoint"""
     health_status = {
-        "status": "healthy", 
-        "timestamp": datetime.utcnow().isoformat(),
-        "service": "payment-idempotency-proxy",  # ADD THIS
-        "version": "1.0.0"  # ADD THIS
+        "status": "healthy",
+        "timestamp": datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
+        "service": "payment-idempotency-proxy",
+        "version": "1.0.0"
     }
-    
-    dependencies = {}  # ADD THIS
-    
-    # Check Redis
-    try:
-        redis_client.ping()
+
+    dependencies = {}
+    redis_ok = redis_connected()
+
+    if redis_ok:
         dependencies["redis"] = "connected"
-    except Exception as e:
-        dependencies["redis"] = f"disconnected: {e}"
+    else:
+        dependencies["redis"] = "disconnected"
         health_status["status"] = "unhealthy"
-    
-    # Check Database
+
     try:
-        from app.database import engine
-        from sqlalchemy import text
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
         dependencies["postgresql"] = "connected"
-    except Exception as e:
-        dependencies["postgresql"] = f"disconnected: {e}"
+    except Exception:
+        dependencies["postgresql"] = "disconnected"
         health_status["status"] = "unhealthy"
-    
-    health_status["dependencies"] = dependencies  # ADD THIS
-    
+
+    health_status["dependencies"] = dependencies
     status_code = 200 if health_status["status"] == "healthy" else 503
     return JSONResponse(status_code=status_code, content=health_status)
 
 @app.get("/")
 async def root():
-    """Root endpoint"""
     return {
         "message": "Payment Idempotency Proxy API",
         "version": "1.0.0",
@@ -376,13 +312,10 @@ async def root():
             "GET /api/v1/idempotency/{key}": "Check idempotency key status"
         }
     }
-    
-    
-    
+
 
 @app.options("/api/v1/payments")
 async def options_payments():
-    """Handle CORS preflight requests"""
     return Response(
         status_code=200,
         headers={
@@ -396,7 +329,6 @@ async def options_payments():
 
 @app.options("/{rest_of_path:path}")
 async def options_all():
-    """Handle CORS preflight for all paths"""
     return Response(
         status_code=200,
         headers={
